@@ -1,5 +1,5 @@
 #!/bin/bash
-# Starts the example service locally
+# Starts the math evauate service locally
 
 export SERVICE_ID="<oc_service_id>"
 export SERVICE_TOKEN="<oc_service_token>"
