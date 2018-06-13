@@ -5,8 +5,8 @@ This is an OpenChirp service that evaluates a logical or mathematical
 expression upon receiving updates to transducers referenced in the expression.
 
 # Service Config
-* `Expressions` - Required - Comma separated list of mathematical or logical expressions - "(temp_c*1.8) + 32", temp_f > 100
-* `Output Topics` - Optional - Comma separated list of corresponding output topics - temp_f, overtemp
+* `Expressions` - Required - Comma separated list of mathematical or logical expressions - `"(temp_c*1.8) + 32", temp_f > 100`
+* `Output Topics` - Optional - Comma separated list of corresponding output topics - `temp_f, overtemp`
 * `Options` - Optional - Comma separated list of optional behavior modifiers -
   `boolasvalue`
     - `boolasvalue` - Indicates that you want boolean values to be published
