@@ -1,20 +1,27 @@
 // Craig Hesling
-// November 26, 2017
+// June 13, 2018
 //
-// This is an example OpenChirp service that tracks the number of publications
-// to the rawrx and rawtx topics and publishes the count to the
-// rawrxcount and rawtxcount transducer topics.
-// This example demonstates argument/environment variable parsing,
-// setting up the service client, and handling device transducer data.
+// This is an OpenChirp service that evaluates a logical or mathematical
+// expression upon receiving updates to transducers referenced in the expression.
+// It should be noted that this service assumes that transducers are only
+// one level deep. This is because we must use them as variable names in an
+// expressions. Since "/" maps to divide, we cannot express hierarchical
+// transducer names.
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 
+	"github.com/Knetic/govaluate"
+
 	"github.com/openchirp/framework"
+	"github.com/openchirp/framework/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 )
@@ -24,55 +31,141 @@ const (
 )
 
 const (
-	// Set this value to true to have the service publish a service status of
-	// "Running" each time it receives a device update event
-	//
-	// This could be used as a service alive pulse if enabled
-	// Otherwise, the service status will indicate "Started" at the time the
-	// service "Started" the client
-	runningStatus = true
+	configKeyExpressions  = "Expressions"
+	configKeyOutputTopics = "Output Topics"
+	configKeyOptions      = "Options"
+	optionBoolAsValue     = "boolasvalue"
 )
 
 const (
-	// The subscription key used to identify a messages types
-	rawRxKey = 0
-	rawTxKey = 1
+	defaultOutputTopicPrefix = "expr"
+	errorTopic               = framework.TransducerPrefix + "/math-evaluate-error"
 )
 
-// Device holds any data you want to keep around for a specific
-// device that has linked your service.
-//
-// In this example, we will keep track of the rawrx and rawtx message counts
+const (
+	// Set this value to true to have the service publish a service status of
+	// "Running" each time it receives a device update event
+	runningStatus = true
+)
+
+// Device holds the device specific last values and target topics for the difference.
 type Device struct {
-	rawRxCount int
-	rawTxCount int
+	expressions []*govaluate.EvaluableExpression
+	outtopics   []string
+	lastvalues  map[string]interface{}
+	boolAsValue bool
 }
 
 // NewDevice is called by the framework when a new device has been linked.
 func NewDevice() framework.Device {
 	d := new(Device)
-	// The following initialization is redundant in Go
-	d.rawRxCount = 0
-	d.rawTxCount = 0
-	// Change type to the Device interface
-	return framework.Device(d)
+	return d
 }
 
 // ProcessLink is called once, during the initial setup of a
 // device, and is provided the service config for the linking device.
 func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
-	// This simply sets up console logging for our program.
-	// Any time this logitem is use to print messages,
-	// the key/value string "deviceid=<device_id>" is prepended to the line.
 	logitem := log.WithField("deviceid", ctrl.Id())
-	logitem.Debug("Linking with config:", ctrl.Config())
+	logitem.Info("Linking with config:", ctrl.Config())
 
-	// Subscribe to subtopic "transducer/rawrx"
-	ctrl.Subscribe(framework.TransducerPrefix+"/rawrx", rawRxKey)
-	// Subscribe to subtopic "transducer/rawtx"
-	ctrl.Subscribe(framework.TransducerPrefix+"/rawtx", rawTxKey)
+	exprs, err := utils.ParseCSVConfig(ctrl.Config()[configKeyExpressions])
+	if err != nil {
+		var ret string
+		if e, ok := err.(*csv.ParseError); ok {
+			ret = fmt.Sprintf("Error parsing %s at column %d: %v", configKeyExpressions, e.Column, e.Err)
+		} else {
+			ret = fmt.Sprintf("Error parsing %s: %v", configKeyExpressions, err.Error())
+		}
+		logitem.Info(ret)
+		return ret
+	}
 
-	logitem.Debug("Finished Linking")
+	topics, err := utils.ParseCSVConfig(ctrl.Config()[configKeyOutputTopics])
+	if err != nil {
+		var ret string
+		if e, ok := err.(*csv.ParseError); ok {
+			ret = fmt.Sprintf("Error parsing %s at column %d: %v", configKeyOutputTopics, e.Column, e.Err)
+		} else {
+			ret = fmt.Sprintf("Error parsing %s: %v", configKeyOutputTopics, err.Error())
+		}
+		logitem.Info(ret)
+		return err.Error()
+	}
+
+	options, err := utils.ParseCSVConfig(ctrl.Config()[configKeyOptions])
+	if err != nil {
+		var ret string
+		if e, ok := err.(*csv.ParseError); ok {
+			ret = fmt.Sprintf("Error parsing %s at column %d: %v", configKeyOptions, e.Column, e.Err)
+		} else {
+			ret = fmt.Sprintf("Error parsing %s: %v", configKeyOptions, err.Error())
+		}
+		logitem.Info(ret)
+		return ret
+	}
+
+	d.boolAsValue = false
+	for _, option := range options {
+		if strings.ToLower(option) == optionBoolAsValue {
+			d.boolAsValue = true
+		}
+	}
+
+	d.expressions = make([]*govaluate.EvaluableExpression, len(exprs))
+	d.outtopics = make([]string, len(exprs))
+	d.lastvalues = make(map[string]interface{})
+
+	for i := range exprs {
+		expr, err := govaluate.NewEvaluableExpression(exprs[i])
+		if err != nil {
+			return fmt.Sprintf("Error parsing expression #%d \"%s\"", i+1, exprs[i])
+		}
+		d.expressions[i] = expr
+
+		if (i < len(topics)) && (topics[i] != "") {
+			d.outtopics[i] = topics[i]
+		} else {
+			d.outtopics[i] = fmt.Sprintf("%s%d", defaultOutputTopicPrefix, i)
+		}
+	}
+	logitem.Debug("Parsed expressions and output topics")
+
+	// Reverse dependency list:
+	//  Transducer name to the expression+output-topic indicies they would
+	//  change, if itself was updated.
+	transducerToIndex := make(map[string][]int)
+	for i, e := range d.expressions {
+		v := e.Vars()
+		sort.Strings(v)
+		var last string
+		for _, s := range v {
+			if last != s {
+				indicies, ok := transducerToIndex[s]
+				if !ok {
+					indicies = make([]int, 0)
+				}
+				indicies = append(indicies, i)
+				transducerToIndex[s] = indicies
+			}
+			last = s
+		}
+	}
+	logitem.Debug("Built reverse transducer name to dependent indicies map")
+
+	for transducerName, indicies := range transducerToIndex {
+		topic := framework.TransducerPrefix + "/" + transducerName
+		ctrl.Subscribe(topic, indicies)
+		logitem.Debug("Subscribing to transducer ", topic, ", which references indicies ", indicies)
+
+		// Also subscribe to the "-" variant of the transducer topic
+		if strings.ContainsRune(transducerName, '_') {
+			topic := framework.TransducerPrefix + "/" + strings.Replace(transducerName, "_", "-", -1)
+			ctrl.Subscribe(topic, indicies)
+			logitem.Debug("Subscribing to transducer ", topic, ", which references indicies ", indicies)
+		}
+	}
+
+	logitem.Info("Finished Linking Successfully")
 
 	// This message is sent to the service status for the linking device
 	return "Success"
@@ -82,53 +175,63 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 // the device.
 func (d *Device) ProcessUnlink(ctrl *framework.DeviceControl) {
 	logitem := log.WithField("deviceid", ctrl.Id())
-	logitem.Debug("Unlinked:")
-
-	// The framework already handles unsubscribing from all
-	// Device associted subtopics, so we don't need to call
-	// ctrl.Unsubscribe.
+	d.expressions = nil
+	d.outtopics = nil
+	d.lastvalues = nil
+	logitem.Info("Unlinked:")
 }
 
-// ProcessConfigChange is intended to handle a service config updates.
-// If your program does not need to handle incremental config changes,
-// simply return false, to indicate the config update was unhandled.
-// The framework will then automatically issue a ProcessUnlink and then a
-// ProcessLink, instead. Note, NewDevice is not called.
-//
-// For more information about this or other Device interface functions,
-// please see https://godoc.org/github.com/OpenChirp/framework#Device .
+// ProcessConfigChange is ignored in this case.
 func (d *Device) ProcessConfigChange(ctrl *framework.DeviceControl, cchanges, coriginal map[string]string) (string, bool) {
 	logitem := log.WithField("deviceid", ctrl.Id())
 
-	logitem.Debug("Ignoring Config Change:", cchanges)
+	logitem.Info("Ignoring Config Change:", cchanges)
 	return "", false
-
-	// If we have processed this config change, we should return the
-	// new service status message and true.
-	//
-	//logitem.Debug("Processing Config Change:", cchanges)
-	//return "Sucessfully updated", true
 }
 
 // ProcessMessage is called upon receiving a pubsub message destined for
 // this device.
-// Along with the standard DeviceControl object, the handler is provided
-// a Message object, which contains the received message's payload,
-// subtopic, and the provided Subscribe key.
 func (d *Device) ProcessMessage(ctrl *framework.DeviceControl, msg framework.Message) {
 	logitem := log.WithField("deviceid", ctrl.Id())
-	logitem.Debugf("Processing Message: %v: [ % #x ]", msg.Key(), msg.Payload())
+	logitem.Debugf("Processing expression event for topic %s", msg.Topic())
 
-	if msg.Key().(int) == rawRxKey {
-		d.rawRxCount++
-		subtopic := framework.TransducerPrefix + "/rawrxcount"
-		ctrl.Publish(subtopic, fmt.Sprint(d.rawRxCount))
-	} else if msg.Key().(int) == rawTxKey {
-		d.rawTxCount++
-		subtopic := framework.TransducerPrefix + "/rawtxcount"
-		ctrl.Publish(subtopic, fmt.Sprint(d.rawTxCount))
-	} else {
-		logitem.Errorln("Received unassociated message")
+	value := utils.ParseOCValue(string(msg.Payload()))
+
+	// First value is only stored, so that we don't get spurious spikes
+	topicParts := strings.Split(msg.Topic(), "/")
+	transducerName := topicParts[len(topicParts)-1]
+	transducerName = strings.Replace(transducerName, "-", "_", -1)
+	if d.lastvalues[transducerName] == nil {
+		logitem.Infof("Setting first value for \"%s\" | value=%v", transducerName, value)
+	}
+	d.lastvalues[transducerName] = value
+
+	// Check all expressions that may have been impacted
+	for _, index := range msg.Key().([]int) {
+		e := d.expressions[index]
+		result, err := e.Evaluate(d.lastvalues)
+		if err != nil {
+			// We are probably missing a parameter
+			logitem.Debugf("Evaluation of \"%s\" resulted in err: %v", e.String(), err)
+			ctrl.Publish(errorTopic, err.Error())
+			continue
+		}
+		var value string = fmt.Sprint(result)
+		switch result.(type) {
+		case float64:
+			value = fmt.Sprintf("%.10f", result.(float64))
+		case bool:
+			if d.boolAsValue {
+				if result.(bool) {
+					value = "1"
+				} else {
+					value = "0"
+				}
+			}
+		}
+		topic := framework.TransducerPrefix + "/" + d.outtopics[index]
+		ctrl.Publish(topic, value)
+		logitem.Debugf("Published value %v to %s", value, topic)
 	}
 }
 
@@ -137,7 +240,7 @@ func run(ctx *cli.Context) error {
 	/* Set logging level (verbosity) */
 	log.SetLevel(log.Level(uint32(ctx.Int("log-level"))))
 
-	log.Info("Starting Example Service")
+	log.Info("Starting Math Evaluate Service")
 
 	/* Start framework service client */
 	c, err := framework.StartServiceClientManaged(
@@ -189,9 +292,9 @@ func run(ctx *cli.Context) error {
 func main() {
 	/* Parse arguments and environmental variable */
 	app := cli.NewApp()
-	app.Name = "example-service"
+	app.Name = "math-evaluate-service"
 	app.Usage = ""
-	app.Copyright = "See https://github.com/openchirp/example-service for copyright information"
+	app.Copyright = "See https://github.com/openchirp/math-evaluate-service for copyright information"
 	app.Version = version
 	app.Action = run
 	app.Flags = []cli.Flag{
