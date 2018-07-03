@@ -68,6 +68,8 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 	logitem := log.WithField("deviceid", ctrl.Id())
 	logitem.Info("Linking with config:", ctrl.Config())
 
+	/* Parse Config */
+
 	exprs, err := utils.ParseCSVConfig(ctrl.Config()[configKeyExpressions])
 	if err != nil {
 		var ret string
@@ -104,6 +106,8 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 		return ret
 	}
 
+	/* Setup Device Context Struct */
+
 	d.boolAsValue = false
 	for _, option := range options {
 		if strings.ToLower(option) == optionBoolAsValue {
@@ -130,6 +134,7 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 	}
 	logitem.Debug("Parsed expressions and output topics")
 
+	/* Subscribe to Inputs */
 	// Reverse dependency list:
 	//  Transducer name to the expression+output-topic indicies they would
 	//  change, if itself was updated.
