@@ -38,3 +38,9 @@ for help with expressions.
   one level deep. This is because we must use them as variable names in an
   expressions. Since "/" maps to divide, we cannot express hierarchical
   transducer names.
+* We allow one type of immediate loop, where the output topic is one of the
+  input variable names. This allows for things like incrementing transducers
+  on events.
+  This kind of immediate loop is detected and handled removing the input
+  variable(which matches the output topic) from the list of transducers
+  capable of triggering a reevaluation.

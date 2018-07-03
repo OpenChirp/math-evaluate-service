@@ -177,8 +177,13 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 				if !ok {
 					indices = make([]int, 0)
 				}
-				indices = append(indices, i)
-				transducerToIndex[s] = indices
+
+				// Now check if this variable will cause an immediate loop.
+				// If so, just omit this variable from triggering this expression
+				if s != d.outtopics[i] {
+					indices = append(indices, i)
+					transducerToIndex[s] = indices
+				}
 			}
 			last = s
 		}
