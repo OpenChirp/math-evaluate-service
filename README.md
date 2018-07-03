@@ -15,6 +15,13 @@ expression upon receiving updates to transducers referenced in the expression.
        This modifier currently does not allow the reverse direction, `0` or `1`
        being used as booleans.
 
+# Expression Syntax
+Expressions are evaluated by the [govaluate](https://github.com/Knetic/govaluate)
+library.
+Please see the library's [README.md](https://github.com/Knetic/govaluate/blob/master/README.md)
+or the library's [MANUAL.md](https://github.com/Knetic/govaluate/blob/master/MANUAL.md)
+for help with expressions.
+
 # Developer Notes
 * Transducer names with `-` must be used in the expression with the underscore,
   `_`, instead. This is because it is impossible to distinguish between the
