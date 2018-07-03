@@ -119,6 +119,9 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 	d.outtopics = make([]string, len(exprs))
 	d.lastvalues = make(map[string]interface{})
 
+	// Each expression is associated with one output topic.
+	// Both the expression and output topic share the same index in
+	// `d.expressions` and `d.outtopics`.
 	for i := range exprs {
 		expr, err := govaluate.NewEvaluableExpression(exprs[i])
 		if err != nil {
@@ -136,16 +139,40 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 
 	/* Subscribe to Inputs */
 
-	// Reverse dependency list:
-	//  Transducer name to the expression+output-topic indices they would
-	//  change, if itself was updated.
+	// We want to create a temporary map from all input transducer names
+	// to the expressions/output-topics they serve as an input to.
+	// Since expressions/output-topics are referenced by index within the
+	// Device context, we will note an array of indices as the map's value.
+	// This index array will be given as the Key when subscribing to the
+	// input transducer name.
+
+	// To make this even more interesting, we want to allow people to
+	// have an expression that directly modifies one of the input variables.
+	// So, a variable in the input expression could be use as the direct output
+	// topic. Without detecting this situation, an infinite event loop would
+	// occur, where the evaluation and publishing of the result would trigger
+	// another evaluation.
+	// To allow this behavior, we want to remove the evaluation of an
+	// expression is the output topic matches one of the variables in the
+	// input expression. In this case the expression would be evaluated
+	// whenever any other variable is updated.
+
+	// This is the local map from variable(transducer name) to indices
 	transducerToIndex := make(map[string][]int)
 	for i, e := range d.expressions {
 		v := e.Vars()
+		// An expression may contain duplicate references to the same transducer
+		// name (variable).
+		// So, we sort the array of transducer names and keep tabs of what
+		// the last variable name was in order to only prcess a variable once.
 		sort.Strings(v)
 		var last string
 		for _, s := range v {
+			// Make sure we have not already processed this variable
 			if last != s {
+				// Even when we will omit an expression from being activated
+				// on a given input transducer, we still need to create a
+				// blank index array and subscribe to value updates.
 				indices, ok := transducerToIndex[s]
 				if !ok {
 					indices = make([]int, 0)
