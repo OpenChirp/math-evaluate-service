@@ -135,8 +135,9 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 	logitem.Debug("Parsed expressions and output topics")
 
 	/* Subscribe to Inputs */
+
 	// Reverse dependency list:
-	//  Transducer name to the expression+output-topic indicies they would
+	//  Transducer name to the expression+output-topic indices they would
 	//  change, if itself was updated.
 	transducerToIndex := make(map[string][]int)
 	for i, e := range d.expressions {
@@ -145,28 +146,28 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 		var last string
 		for _, s := range v {
 			if last != s {
-				indicies, ok := transducerToIndex[s]
+				indices, ok := transducerToIndex[s]
 				if !ok {
-					indicies = make([]int, 0)
+					indices = make([]int, 0)
 				}
-				indicies = append(indicies, i)
-				transducerToIndex[s] = indicies
+				indices = append(indices, i)
+				transducerToIndex[s] = indices
 			}
 			last = s
 		}
 	}
-	logitem.Debug("Built reverse transducer name to dependent indicies map")
+	logitem.Debug("Built reverse transducer name to dependent indices map")
 
-	for transducerName, indicies := range transducerToIndex {
+	for transducerName, indices := range transducerToIndex {
 		topic := framework.TransducerPrefix + "/" + transducerName
-		ctrl.Subscribe(topic, indicies)
-		logitem.Debug("Subscribing to transducer ", topic, ", which references indicies ", indicies)
+		ctrl.Subscribe(topic, indices)
+		logitem.Debug("Subscribing to transducer ", topic, ", which references indices ", indices)
 
 		// Also subscribe to the "-" variant of the transducer topic
 		if strings.ContainsRune(transducerName, '_') {
 			topic := framework.TransducerPrefix + "/" + strings.Replace(transducerName, "_", "-", -1)
-			ctrl.Subscribe(topic, indicies)
-			logitem.Debug("Subscribing to transducer ", topic, ", which references indicies ", indicies)
+			ctrl.Subscribe(topic, indices)
+			logitem.Debug("Subscribing to transducer ", topic, ", which references indices ", indices)
 		}
 	}
 
