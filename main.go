@@ -182,8 +182,9 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 				// If so, just omit this variable from triggering this expression
 				if s != d.outtopics[i] {
 					indices = append(indices, i)
-					transducerToIndex[s] = indices
 				}
+
+				transducerToIndex[s] = indices
 			}
 			last = s
 		}
