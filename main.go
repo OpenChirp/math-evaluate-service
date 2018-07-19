@@ -39,7 +39,7 @@ const (
 
 const (
 	defaultOutputTopicPrefix = "expr"
-	errorTopic               = framework.TransducerPrefix + "/math-evaluate-error"
+	errorTopic               = "math-evaluate-error"
 )
 
 const (
@@ -192,13 +192,13 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 	logitem.Debug("Built reverse transducer name to dependent indices map")
 
 	for transducerName, indices := range transducerToIndex {
-		topic := framework.TransducerPrefix + "/" + transducerName
+		topic := transducerName
 		ctrl.Subscribe(topic, indices)
 		logitem.Debug("Subscribing to transducer ", topic, ", which references indices ", indices)
 
 		// Also subscribe to the "-" variant of the transducer topic
 		if strings.ContainsRune(transducerName, '_') {
-			topic := framework.TransducerPrefix + "/" + strings.Replace(transducerName, "_", "-", -1)
+			topic := strings.Replace(transducerName, "_", "-", -1)
 			ctrl.Subscribe(topic, indices)
 			logitem.Debug("Subscribing to transducer ", topic, ", which references indices ", indices)
 		}
@@ -268,7 +268,7 @@ func (d *Device) ProcessMessage(ctrl *framework.DeviceControl, msg framework.Mes
 				}
 			}
 		}
-		topic := framework.TransducerPrefix + "/" + d.outtopics[index]
+		topic := d.outtopics[index]
 		ctrl.Publish(topic, value)
 		logitem.Debugf("Published value %v to %s", value, topic)
 	}
