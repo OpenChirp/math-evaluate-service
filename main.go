@@ -236,9 +236,7 @@ func (d *Device) ProcessMessage(ctrl *framework.DeviceControl, msg framework.Mes
 
 	value := utils.ParseOCValue(string(msg.Payload()))
 
-	// First value is only stored, so that we don't get spurious spikes
-	topicParts := strings.Split(msg.Topic(), "/")
-	transducerName := topicParts[len(topicParts)-1]
+	transducerName := msg.Topic()
 	transducerName = strings.Replace(transducerName, "-", "_", -1)
 	if d.lastvalues[transducerName] == nil {
 		logitem.Infof("Setting first value for \"%s\" | value=%v", transducerName, value)
@@ -246,6 +244,7 @@ func (d *Device) ProcessMessage(ctrl *framework.DeviceControl, msg framework.Mes
 	d.lastvalues[transducerName] = value
 
 	// Check all expressions that may have been impacted
+	// The indices of expressions impacted are saved in the msg.Key
 	for _, index := range msg.Key().([]int) {
 		e := d.expressions[index]
 		result, err := e.Evaluate(d.lastvalues)
