@@ -123,7 +123,7 @@ func (d *Device) ProcessLink(ctrl *framework.DeviceControl) string {
 	// Both the expression and output topic share the same index in
 	// `d.expressions` and `d.outtopics`.
 	for i := range exprs {
-		expr, err := govaluate.NewEvaluableExpression(exprs[i])
+		expr, err := govaluate.NewEvaluableExpressionWithFunctions(exprs[i], evalFunctions)
 		if err != nil {
 			return fmt.Sprintf("Error parsing expression #%d \"%s\"", i+1, exprs[i])
 		}
