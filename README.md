@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/OpenChirp/math-evaluate-service.svg?branch=master)](https://travis-ci.org/OpenChirp/math-evaluate-service)
+
 # Math-Evaluate OpenChirp Service
 
 ## Overview
