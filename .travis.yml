@@ -10,9 +10,9 @@ env:
   - GOOS=linux GOARCH=mips
   - GOOS=windows GOARCH=amd64
   - GOOS=darwin GOARCH=amd64
-before_install:
-  - go get -u -v github.com/golang/dep/cmd/dep
-install:
-  - dep ensure
-  - go get -t .
+#before_install:
+#  - go get -u -v github.com/golang/dep/cmd/dep
+#install:
+#  - dep ensure
+#  - go get -t .
 go_import_path: github.com/openchirp/math-evaluate-service
