@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -258,7 +257,7 @@ func (d *Device) ProcessMessage(ctrl *framework.DeviceControl, msg framework.Mes
 		var value string = fmt.Sprint(result)
 		switch result.(type) {
 		case float64:
-			value = strconv.FormatFloat(result.(float64), 'f', -1, 64)
+			value = utils.FormatFloat64(result.(float64))
 		case bool:
 			if d.boolAsValue {
 				if result.(bool) {
