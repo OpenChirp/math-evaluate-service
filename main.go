@@ -21,6 +21,7 @@ import (
 	"github.com/Knetic/govaluate"
 
 	"github.com/openchirp/framework"
+	"github.com/openchirp/framework/rest"
 	"github.com/openchirp/framework/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -36,6 +37,27 @@ const (
 	configKeyOptions      = "Options"
 	optionBoolAsValue     = "boolasvalue"
 )
+
+var configParams = []rest.ServiceConfigParameter{
+	rest.ServiceConfigParameter{
+		Name:        configKeyExpressions,
+		Description: "Comma separated list of mathematical or logical expressions",
+		Example:     `(temp_c*1.8) + 32", temp_f > 100`,
+		Required:    true,
+	},
+	rest.ServiceConfigParameter{
+		Name:        configKeyOutputTopics,
+		Description: "Comma separated list of corresponding output topics",
+		Example:     `temp_f, overtemp`,
+		Required:    false,
+	},
+	rest.ServiceConfigParameter{
+		Name:        configKeyOptions,
+		Description: "Comma separated list of optional behavior modifiers",
+		Example:     `boolasvalue`,
+		Required:    true,
+	},
+}
 
 const (
 	defaultOutputTopicPrefix = "expr"
@@ -301,6 +323,13 @@ func run(ctx *cli.Context) error {
 		return cli.NewExitError(nil, 1)
 	}
 	log.Info("Published Service Status")
+
+	/* Updating device config parameters */
+	if err := c.UpdateConfigParameters(configParams); err != nil {
+		log.Error("Failed to update service config parameters: ", err)
+		return cli.NewExitError(nil, 1)
+	}
+	log.Info("Updated Service Config Parameters")
 
 	/* Setup signal channel */
 	signals := make(chan os.Signal, 1)
